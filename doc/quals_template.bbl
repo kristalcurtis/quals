@@ -1,0 +1,10 @@
+\begin{thebibliography}{1}
+
+\bibitem{Zaharia:2012}
+M.~Zaharia, M.~Chowdhury, T.~Das, A.~Dave, J.~Ma, M.~McCauley, M.~J. Franklin,
+  S.~Shenker, and I.~Stoica.
+\newblock Resilient distributed datasets: A fault-tolerant abstraction for
+  in-memory cluster computing.
+\newblock In {\em NSDI 2012}, April 2012.
+
+\end{thebibliography}
