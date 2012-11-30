@@ -19,9 +19,25 @@
 
 \section{Introduction} 
 
+\begin{figure*}
+\centering
+\includegraphics[scale=0.6]{variantCalling.pdf}
+\caption{Variant calling overview.}
+\label{fig:variantCalling}
+\end{figure*}
+
+\begin{figure}
+\centering
+\includegraphics[scale=0.6]{pipeline.pdf}
+\caption{Variant calling pipeline, at a high level.}
+\label{fig:pipeline}
+\end{figure}
+
 \section{Improving Alignment with SNAP}
+\label{section:SNAP}
 
 \section{The Similarity Problem}
+\label{section:similarityProblem}
 
 After implementing the basic SNAP algorithm, we explored how various properties of its search parameters and input data affect its speed and accuracy.  Through this process, we discovered that the main obstacle to both speed and accuracy in alignment is the \textit{similar regions} in the genome.  In what follows, we discuss our observations of how similar regions impact SNAP's performance.  Then, we describe a method for identifying the similar regions, as well as some insights into their characteristics.  We also discuss how we plan to exploit genome similarity throughout the pipeline to improve speed and accuracy of variant calling.
 
@@ -54,6 +70,7 @@ To confirm our intuition that similar regions are presenting a significant obsta
 \label{section:identifyingSimilarRegions}
 
 % talk about how union find works
+% TODO:  want to mention that this is with Hamming distance rather than full edit distance?
 The straightforward approach to find clusters would be to create a graph where the nodes are the substrings in the genome and there is an edge between any two nodes that are sufficiently similar.  Then, the clusters correspond to the connected components of this graph.  However, since there are over 3 billion substrings of length 100, the length of the short reads we are using, both building this graph and then the subsequent step to find the connected components are very expensive.  Therefore, we chose to approximate this approach by using the well-known \textit{union-find algorithm}.  In union-find, each substring starts in its own cluster.  Then, whenever two substrings are sufficiently similar, we merge the two clusters.  The output of this process is similar to the connected components of the graph identified by the straightforward approach; however, the union-find implementation is much more efficient.  In order to determine which clusters to merge, we use the SNAP index to find all locations to which a substring's seeds map.  Thus, we avoid doing the full \(N \times N\) comparison of all the substrings in the genome.
 
 % talk about how I used Spark for the implementation
@@ -70,17 +87,98 @@ Though the union-find algorithm is more efficient than the na\"{\i}ve connected 
 Compared to other approaches to clustering the genome (see Section \ref{section:clusteringTheGenome}), our approach has several advantages.  First, because our approach is driven by the characteristics of the short reads themselves, rather than being motivated by a more biological desire to better understand the repeat characteristics of the genome, our problem is more constrained.  Many of the previous approaches to clustering the genome attempt full generality, without imposing any constraints on repeat length, and allowing many only marginally related substrings to belong to the same repeat family in the interest of reducing the number of repeat families to enhance interpretability.  However, this results not only in algorithms that are very complicated and computationally expensive but also in output that is difficult to utilize for short-read processing.  Our more constrained problem, where we fix the length of any substrings considered to be the same as that of the short reads, is simpler to tackle and is therefore more amenable to an efficient algorithm.  
 % still need to talk about cons
 
+The downside to our approach is that since our setting is completely unsupervised, the clusters are difficult to evaluate via an intrinsic metric (\ie one focused solely on the clusters rather than on how the clusters benefit an application in which they are used).  In the situation where labeled data exists (\eg \cite{Cohen:2005}), various metrics such as cluster purity that give a sense for how cohesive the clusters are may be used.  However, in our setting, we lack labeled data.  Some of the previous work attempted to get around this issue by comparing to the data in RepBase.  % TODO:  need citation to RepBase here
+However, this comparison is harder in our case, due to the different constraints of our problem.  Therefore, we rely mostly on extrinsic evaluation criteria -- \ie, whether our clusters improve the performance of short read analysis.
+
 % talk about the results
+We used a merge distance of 4 based on our experiments with varying the merge distance and looking at the results on single chromosomes.  With smaller distances, the clusters turn out to be too small to make much impact.  With larger distances, the downstream performance degrades too much because the clusters get too bloated.  However, this choice of merge distance is impacted by the extrinsic criteria that are identified, which we will discuss in more detail in Section \ref{section:exploitingSimilarityInAlignment}.  The similar region finder tool applied to hg19 took 126 hours on a single node with 16 cores, or about 2016 CPU-hours.  While this took a few days, it is important to note that the results could be obtained faster by scaling out onto multiple nodes with just a change to the job configuration since we used Spark.  The tool used about 100 GB of memory, which is practical on modern servers.  The output size is 2.8 GB, with 39,992,540 clusters, where a cluster is defined as having at least two members.  The number of genome positions in these clusters is 263,230,347, or 8.4\% of the 3.1B positions in hg19.
 
-\subsection{Vision for Exploiting Similar Regions}
+\section{Vision for Exploiting Similar Regions}
+\label{section:visionExploitingSimilarRegions}
 
-\section{Exploiting Similarity in Alignment}
+In Section \ref{section:similarityProblem}, we discussed how genome similarity makes short-read processing, specifically alignment, more challenging, and we presented a method for locating the similar regions in the genome.  In this section, we will discuss how to exploit the similar regions that we have identified to improve short-read analysis.  We will begin by describing ongoing work that aims to improve alignment performance by using similar regions.  We will also discuss plans for future work in which we will make use of the information about similar regions in subsequent stages of the pipeline.
 
-\section{Exploiting Similarity throughout the Pipeline}
+\subsection{Exploiting Similarity in Alignment}
+\label{section:exploitingSimilarityInAlignment}
+
+% most straightforward:  use clusters in the best-matcher
+The most straightforward way to utilize the clusters we produced is to augment SNAP so that it uses information about whether a particular genome position belongs to a cluster.  In the regular version of SNAP described in Section \ref{section:SNAP}, alignment errors are usually due to the situation illustrated in Figure \ref{fig:simAwareSNAP}(a).  Due to the setting of \(h_{max}\), SNAP may consider only some of a read's candidate locations.  This leads to alignment errors when SNAP chooses a location out of the ones it has considered, while the correct location was skipped.
+
+Our idea is to extend SNAP to be aware if a read's candidate locations are in a cluster.  This idea is illustrated in Figure \ref{fig:simAwareSNAP}(b).  Instead of considering each location on its own, without regard to its cluster status, we check for each of a read's candidate locations whether that location belongs to a cluster.  If it does, we automatically pull in all the members of the cluster and compare the read to each of them.  This helps us avoid missing good locations where our read might align (due to \(h_{max}\) being set too low).
+
+\begin{figure*}
+\centering
+\begin{tabular}{c c}
+\includegraphics[scale=0.33]{snapWithoutClusters.pdf} & \includegraphics[scale=0.33]{simAwareSNAP.pdf}\\
+(a) & (b)\\
+\end{tabular}
+\caption{SNAP, with and without clusters.  (a)  Without clusters, SNAP may miss some good locations for a read, causing errors.  (b)  With clusters, when SNAP finds that a read matches well against a particular location, it also checks the peers (\ie cluster members) of that location.  This avoids missing locations to which the read may align better than the given location and cuts down on the error rate.}
+\label{fig:simAwareSNAP}
+\end{figure*}
+
+% say this will improve accuracy, b/c you're comparing against more locations, but you want to do this without losing too much speed
+This approach is bound to improve alignment accuracy, since the effect of the clusters is that you compare against more locations and are therefore more likely to find the best location to which the read aligns.  The main challenge, then, is to perform this similarity-aware alignment efficiently.  
+
+% discuss some of the techniques we're using
+Presently, we use three techniques to improve the similarity-aware SNAP's performance.  First, we create a special index that is informed by the cluster membership of the genome positions.  In the normal SNAP index, we insert into the hash table a given seed and the position(s) at which it may be found in the genome.  In our similarity-aware index, we modify this approach, in that if a seed found at a given position is in a cluster, instead of storing that position with the seed in the index, we store the cluster ID, which we define to be the first (\ie with the lowest index) member of the cluster.  This avoids an extra step of determining, once you know that a position is in a cluster, which cluster to which a position belongs.
+
+A second technique we use to reduce alignment latency is intra-cluster pruning.  The idea here is that we want to be able to tolerate clusters that may be a little too inclusive, since clusters with more members result in higher accuracy (as more locations are being checked), and because as mentioned in Section \ref{section:identifyingSimilarRegions}, tuning the clusters from our union-find approach is not straightforward.  Therefore, we introduce a preprocessing step in which for each cluster, we determine the consensus string (by simply taking the most popular base at each position), as well as each member's differences from the consensus.  Then, when we decide we want to compare a read to a particular cluster, we use the triangle inequality to filter out members that we know are too distant from the read.  
+
+Third, we have developed a version of the edit distance algorithm that exploits the similarity among the cluster's members.  The idea here is that the strings in a cluster are all very similar to each other, so it is wasteful to compare the read separately against all the locations.  Instead, we compare only against the differences between each cluster member and the consensus string.
+
+% this might be a good place for DP & AF's "hypothetical" graph
+
+% talk about future work to improve the speed further
+% discuss how we've done profiling and we need to optimize the indexing scheme, given the memory access patterns we've observed
+
+% extension:  use them in the all-matcher
+Another application of the clusters related to alignment is creating an \textit{all matcher} version of SNAP, where instead of returning the single best location where a read matches (or no location, if no confident alignment is available), we return all locations to which SNAP matches within a given edit distance.  All matchers tools are useful for several reasons.  First, some of the structural variant detection tools (\eg VariationHunter) rely on such information \cite{Hormozdiari:2009}.  Current all matchers, such as mrFAST \cite{Alkan:2009}, are painfully slow.  % TODO:  give some #s here
+Therefore, creating a faster version of an all-match aligner would make it easier and more practical to use tools like VariationHunter.
+We provide the performance results of our all-matcher in Table \ref{table:allMatcher}.  Through the use of some of the techniques presented in the context of the best-match version of SNAP (see Section \ref{section:exploitingSimilarityInAlignment}), we are able to achieve a speedup over the regular SNAP all-matcher.
+
+% give the results we have for the all-matcher (just for chr1-3)
+\begin{table*}
+\centering
+\begin{tabular}{| l || c | c |}
+\hline
+\vrule height 10pt depth 0pt width 0pt \textbf{Algorithm} & \textbf{Reads/s} & \textbf{Speedup}\\
+\hline
+\vrule height 10pt depth 0pt width 0pt Regular SNAP & 2125 & -\\
+\hline
+\vrule height 10pt depth 0pt width 0pt Sim-aware SNAP, regular index & 2358 & 1.11\\
+\hline
+\vrule height 10pt depth 0pt width 0pt Sim-aware SNAP, sim-aware index & 2920 & 1.37\\
+\hline
+\end{tabular}
+\caption{Using clusters in the all matcher version of SNAP results in a speedup over the regular SNAP all-matcher without clusters.  Results shown were obtained aligning one million simulated reads from chromosomes 1-3.}
+\label{table:allMatcher}
+\end{table*}
+% TODO:  add a line in the table for mrFAST, and maybe mrsFAST as well?
+
+% talk about how we're still working on improving the results
+With both the best-match and all-match versions of SNAP, we have spent some time doing profiling to determine how to further improve the speedup obtained by using the clusters.  Our main insight is that the similarity-aware versions of SNAP spend a lot more time in cache misses, each of which costs hundreds of CPU cycles, than the regular version of SNAP.  These cache misses result when the similarity-aware SNAP queries the similarity map to determine whether a given position is in a cluster because the similarity map is too large to fit in the cache.  Therefore, we are currently devising a strategy to alter the similarity map representation so that it will fit into the L3 cache; we are aiming to make it fit in 8 MB.  We plan to use Bloom filters to represent the positions, so that we will need only 5 bits per position.  We also plan to store only the cluster IDs in the similarity map, rather than all the positions that are in clusters.  We expect that this will enable us to further improve the speedup obtained.  However, given that SNAP's memory access patterns have been heavily optimized, the fact that the less mature versions of our similarity-aware best- and all-match algorithms are near or slightly outperforming the standard SNAP is encouraging.  %  TODO:  is this true?
+
+% this part is important!
+\subsection{Exploiting Similarity throughout the Pipeline}
+
+% mapq
+
+% pipeline -- use it as a signal to where to spend extra processing time
+
+% ravi's SV
 
 \section{Related Work}
 
 \subsection{Alignment}
+
+\subsubsection{Seed-based Aligners}
+% BLAST, Smith-Waterman
+
+\subsubsection{Burrows-Wheeler Transform}
+% BWA, Bowtie2, SOAP2
+
+\subsubsection{Alignment to Similar Regions}
+% based on review paper
 
 \subsection{Clustering the Genome}
 \label{section:clusteringTheGenome}
