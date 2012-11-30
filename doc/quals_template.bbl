@@ -1,5 +1,24 @@
 \begin{thebibliography}{1}
 
+\bibitem{Alkan:2009}
+C.~Alkan, J.~M. Kidd, T.~Marques-Bonet, G.~Aksay, F.~Antonacci, F.~Hormozdiari,
+  J.~O. Kitzman, C.~Baker, M.~Malig, O.~Mutlu, S.~C. Sahinalp, R.~A. Gibbs, and
+  E.~E. Eichler.
+\newblock Personalized copy number and segmental duplication maps using
+  next-generation sequencing.
+\newblock {\em Nature Genetics}, 41(10):1061--1067, October 2009.
+
+\bibitem{Cohen:2005}
+I.~Cohen, S.~Zhang, M.~Goldszmidt, J.~Symons, T.~Kelly, and A.~Fox.
+\newblock Capturing, indexing, clustering, and retrieving system history.
+\newblock In {\em SOSP}, pages 105--118, 2005.
+
+\bibitem{Hormozdiari:2009}
+F.~Hormozdiari, C.~Alkan, E.~E. Eichler, and S.~C. Sahinalp.
+\newblock Combinatorial algorithms for structural variation detection in
+  high-throughput sequenced genomes.
+\newblock {\em Genome Research}, 19:1270--1278, 2009.
+
 \bibitem{Zaharia:2012}
 M.~Zaharia, M.~Chowdhury, T.~Das, A.~Dave, J.~Ma, M.~McCauley, M.~J. Franklin,
   S.~Shenker, and I.~Stoica.
