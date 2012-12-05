@@ -19,12 +19,28 @@
 
 \section{Introduction} 
 
-\begin{figure*}
-\centering
-\includegraphics[scale=0.6]{variantCalling.pdf}
-\caption{Variant calling overview.}
-\label{fig:variantCalling}
-\end{figure*}
+\section{Background}
+
+\subsection{Improving Alignment with SNAP}
+\label{section:SNAP}
+
+My work as part of the SNAP (Scalable Nucleotide Alignment Program) project sets the stage for this work on the importance of similarity and similarity-exploiting algorithms.  SNAP is a fast, accurate short-read alignment algorithm.  Many existing alignment algorithms focus either on speed or accuracy.  SNAP improves on the speed of the so-called fast algorithms while maintaining a high accuracy.
+
+% TODO:  cite BLAST
+The original short-read alignment algorithms, such as BLAST, used a hash table to create an index of the reference genome.  Then, given a read to align, they generated a list of candidate locations where the read might match by looking up substrings of the read, termed \textit{seeds}, in the hash table.  To choose a location out of this list, the algorithm would compute the edit distance from the read to the reference at each candidate, and it would report the best of these locations as the alignment for the given read.  Algorithms in this class are generally considered to be accurate but slow.
+
+% TODO:  add citations for Bowtie2, SOAP2
+Most of the aligners that are generally considered to be fast are based on the Burrows-Wheeler transform.  These include BWA \cite{Li:2009}, Bowtie2, and SOAP2, among others.  These aligners work by representing the genome as a compressed trie rather than a hash table.  While these aligners are faster than the hash-based aligners, they are less accurate.  They also tend to be more restrictive in the reads that they can align, \ie they permit fewer errors per read, or only errors of a certain type.
+
+SNAP is a hash-based aligner like the first category.  However, it is faster and more accurate than the Burrows-Wheeler aligners.  It achieves this balance by a combination of leveraging resource improvements and algorithmic innovation.  Regarding resource improvements, both DNA short-read sequencers and modern servers have improved.  This results in longer reads, which are easier to align because they permit us to use longer seeds.  Longer seeds are advantageous because they result in fewer matches and therefore fewer locations against which reads must be compared.  Improvements in server architectures mean that it is practical to obtain a server with many tens of gigabytes, or even a few hundred gigabytes, of memory; in fact, servers of this type may be rented for under \$2 per hour via Amazon EC2.  This lets us create a more comprehensive index of the reference genome than was possible when the first hash-based aligners were developed, which has the advantage of resulting in fewer cache misses.
+
+Beyond leveraging improving sequencing and computational resources, SNAP also gains speed by minimizing the number and cost of edit distance checks.  The number of edit distance checks is reduced through the use of long seeds, which have fewer false positive matches in the index.  The cost of edit distance checks is reduced by using the Ukkonen edit distance algorithm, which is less expensive depending on the maximum edit distance permitted.  We leverage this fact by progressively reducing the bound on the edit distance check as we find better and better matches.  We can do this because since the point is to find the best match, as well as to determine whether we can map the read unambiguously, we need only consider the best and second-best matches for the read.  Thus, we need not consider any matches that are worse than the best and second-best we have so far located.  
+
+We have extensively evaluated SNAP on both simulated and real data, as well as both single- and paired-end data.
+
+\subsection{Variant Calling}
+
+The next step after alignment is variant calling.  The goal of variant calling is to identify the locations at which the sample's genome differs from the reference genome, as well as to identify the content of the sample's genome at those locations.  Variant calling usually takes place after the reads have been aligned to the reference genome, via an alignment algorithm like SNAP.  The variant calling pipeline is represented at a high level in Figure \ref{fig:pipeline}.  Variant calling includes locating small variants, called single nucleotide polymorphisms (SNPs), as well as larger ones, called structural variants (SVs).  The most commonly used tool for SNP calling is called the Genome Analysis ToolKit (GATK) \cite{DePristo:2011}.  Several tools for structural variant calling exist.
 
 \begin{figure}
 \centering
@@ -33,10 +49,16 @@
 \label{fig:pipeline}
 \end{figure}
 
-\section{Background}
+The high-level idea of variant calling is to look at all the reads that overlap a particular location and to determine what information those reads collectively contain about the genome content at that location.  This process is illustrated in Figure \ref{fig:variantCalling}.  In the figure, several reads overlap a particular position, and most of them suggest an alternative allele to that possessed by the reference genome (the alternative allele is represented in red).  One of the reads has different content at the given location (represented by a yellow marker); this is likely an error particular to the read, since it appears only in that read.  Thus, the straightforward thing to do at this location is to postulate that the sample's genome has the allele represented by red at that position.
 
-\subsection{Improving Alignment with SNAP}
-\label{section:SNAP}
+This process is similarly carried out at all locations in the genome.  The output is a list of variants, or positions where the individual's genome differs from the reference genome.  This information is useful for a variety of tasks, such as genome-wide association studies which seek to identify a genetic cause for a particular disease.  
+
+\begin{figure*}
+\centering
+\includegraphics[scale=0.6]{variantCalling.pdf}
+\caption{Variant calling overview.}
+\label{fig:variantCalling}
+\end{figure*}
 
 \subsection{Alignment to Similar Regions}
 % based on review paper
@@ -186,20 +208,36 @@ Our idea is to not only add the existing approach to MAPQ to SNAP, but also to i
 \subsubsection{Variant Calling}
 
 % say something about existing variant calling approaches
+Another area where we believe we can exploit the similarity in the genome is in variant calling.  Existing variant calling pipelines such as the GATK \cite{DePristo:2011} are very computationally expensive.  They are also very complicated, not only to run but also to understand what each stage is doing, much less to get a sense for the value that each stage contributes to the final outcome.  Thus, practitioners usually treat them as a black box, without getting much insight into the results that are produced, but rather being required to accept them without question.
 
 % talk about how we want to do things differently:  do something simple/naive on the easy regions; do more on the harder regions
+Our goal is to produce a pipeline that is not only more efficient than existing approaches, but also simpler to understand and to use.  We also aim to improve on the accuracy of existing tools.  Our main strategy is, for each region of the genome, to classify the region as either easy or hard, and then to either utilize a na\"{\i}ve variant caller or a sophisticated variant caller, respectively.  We believe that this strategy will allow substantial computational savings, since it is likely that a small fraction of regions fall into the hard category.  Therefore, we will be able to use the simple variant caller most of the time.
 
 % talk about how we'll use clusters as a signal for where the harder regions are
+One of the ways that we plan to utilize similarity to improve variant calling is by using the clusters as one of the signals for where the hard regions are.  Since we have already observed that alignment errors are highly concentrated in similar regions (Figure \ref{fig:errorsInClusters}), we believe that these alignment errors will also have a negative impact on our variant calling in these regions.  Therefore, a first step to this process will be to automatically consider any region that falls within a cluster as a hard region, and consequently to devote more processing there.
 
 % might want to jointly consider clusters since reads may be aligned among different cluster members
+One idea we have for what kind of sophisticated processing might be necessary in these hard regions, identified as such because of their cluster membership, is to jointly consider regions that co-occur in a cluster.  This is motivated by the fact that since alignment errors occur predominantly in clusters, reads are likely to be somewhat scattered among different cluster members.  Therefore, we could possibly improve performance in these regions by utilizing the knowledge that reads that belong to a particular region may have been assigned elsewhere.  This sort of joint consideration should allow us to disentangle these reads and reassign these reads to their correct location.  We hope that this will lead to an improvement in variant calling accuracy in these regions.
 
 % might want to use this with all-matcher -- let reads align to multiple places, then jointly consider those regions to figure out where the reads probably came from
+Another possibility is to use this in conjunction with the all-match version of the aligner.  In this situation, rather than forcing reads that align to clusters to align to a single best location, which may or may not be correct, we would allow these reads to align to many or all of their suitable locations.  Then, these reads could contribute to variant calling at multiple locations, which we would consider jointly.
 
 \section{Research Timeline}
 
 % Paragraph on finishing the SNAP paper with cluster-informed MAPQ
+\subsection*{Spring 2013}
+I plan to focus on implementing an expanded version of MAPQ, informed by clusters.  This will provide an important yet currently missing feature of SNAP.  Given this feature, we will submit a SNAP paper.
+
 % Paragraph on similarity-exploiting SNAP (with memory optimizations)
+\subsection*{Summer 2013}
+During the summer, I will continue the work on similarity-aware SNAP, both the best-matcher and all-matcher versions.  This work will mainly involve optimizing the memory access patterns of both versions of the aligner to improve the speed.  I plan to submit a paper on the similarity-exploiting version of SNAP by the end of the summer.
+
 % Paragraph on investigating impact on the rest of the pipeline
+\subsection*{Fall 2013}
+During the fall, I will work on the rest of the pipeline, \ie variant calling.  First, I will investigate how alignment errors, particularly in similar regions, impact the accuracy of variant calling.  Then, I will work on leveraging similarity to improve variant calling.  Initially, this will take the form of dedicating extra focus to variant calling in similar regions.
+
+\subsection*{Spring 2014}
+I plan to complete my graduate studies this semester.  I will work on writing up a paper about our variant calling efforts.  I will also write and file my dissertation.
 
 \section{Conclusion}
 
