@@ -33,8 +33,16 @@
 \label{fig:pipeline}
 \end{figure}
 
-\section{Improving Alignment with SNAP}
+\section{Background}
+
+\subsection{Improving Alignment with SNAP}
 \label{section:SNAP}
+
+\subsection{Alignment to Similar Regions}
+% based on review paper
+
+\subsection{Clustering the Genome}
+\label{section:clusteringTheGenome}
 
 \section{The Similarity Problem}
 \label{section:similarityProblem}
@@ -161,27 +169,31 @@ With both the best-match and all-match versions of SNAP, we have spent some time
 % this part is important!
 \subsection{Exploiting Similarity throughout the Pipeline}
 
-% mapq
+Having observing the impact of genome similarity on alignment, and having demonstrated that exploiting similarity will enable us to improve on alignment, we now look to the rest of the pipeline with an aim to improve downstream processing as well.  As before, we are interested in improving on both the speed and accuracy of current tools.  In what follows, we discuss our plans for utilizing similarity information throughout the pipeline.
 
-% pipeline -- use it as a signal to where to spend extra processing time
+\subsubsection{Mapping Quality}
 
-% ravi's SV
+One important direction for improving the stages that are downstream from alignment is producing mapping quality (MAPQ) values.  Currently, SNAP lacks the ability to report a broad spectrum of MAPQ values.  Instead, it basically employs a binary strategy:  if SNAP is confident about the alignment (\ie believes the read to be uniquely alignable), it reports a MAPQ of 60; otherwise, if it believes that the read can only be aligned ambiguously, it reports 0.  Therefore, an obvious extension to SNAP would be reporting mapping quality values that span the full range rather than just giving a binary response.  This would be useful because even in the case where SNAP believes that it has found an unambiguous best match, downstream stages would benefit from knowing how confident SNAP is about that value.
 
-\section{Related Work}
+Mapping quality was introduced in the context of the MAQ aligner \cite{Li:2008}.  It was extended to allow SNPs and indels in the context of Stampy \cite{Lunter:2011}.  The goal of a mapping quality score is to provide the probability that the read has been misaligned.  To do this in full, it is necessary to compare how well the read aligns at the chosen location to how well it aligns at every other location in the genome.  Obviously, this is prohibitively expensive.  Therefore, this quantity is approximated, generally by considering the best and second-best hits.  The MAQ mapping quality formula considers the base quality values at read positions that do not match the reference at the best and second-best matching genome locations.  They also consider the number of hits with the same number of mismatching bases as the second-best hit.  The idea, then, is that if a read has many locations that are almost as good as the best one, you will be less confident about aligning it.
 
-\subsection{Alignment}
+While a potentially valuable signal to downstream analysis, MAPQ values are generally regarded to be unreliable.  However, downstream analysis does rely on these values, \eg by only considering reads that have been mapped with a MAPQ above a certain threshold.  This results in loss of data that could potentially be useful.  One step that pipelines take to deal with this issue is quality score recalibration \cite{DePristo:2011}; however, this process is very expensive and also potentially error-prone.  Therefore, an improvement to MAPQ would not only be an improvement to SNAP, but it would also potentially improve the speed, by avoiding recalibration, and accuracy, by providing better information about which reads to trust, of the later stages of the pipeline.
 
-\subsubsection{Seed-based Aligners}
-% BLAST, Smith-Waterman
+Our idea is to not only add the existing approach to MAPQ to SNAP, but also to improve on MAPQ using our similarity information.  We plan to follow the existing approach that takes into account other locations that are candidates for where a read may match.  The clusters will provide a useful signal to where else the read may match, while still maintaining an efficient MAPQ computation.  The idea is that if a read is aligned to a cluster, you automatically know many other locations where it will likely align well.  Therefore, you can take this information into account when you compute the MAPQ score.  The hope is that using clusters, you will get more of the potential matches for the read than you would otherwise, and therefore your approximation should be better than it would be if you missed some of these potential matches.  Recall that the ideal scenario would be comparing against all other locations in the genome; while this is intractable, we can further approach this ideal by using the cluster information.  Recall also that the great majority of alignment errors occur in clusters.  Therefore, just the fact that a read aligns to a cluster location is a powerful signal that the alignment may be incorrect.
+% this paragraph probably needs work!  maybe talk about the likelihood that errors are in clusters first, then the advantage of getting more positions to compare against
 
-\subsubsection{Burrows-Wheeler Transform}
-% BWA, Bowtie2, SOAP2
+% pipeline -- use it as a signal to where to spend extra processing time (eg, ravi's SV)
+\subsubsection{Variant Calling}
 
-\subsubsection{Alignment to Similar Regions}
-% based on review paper
+% say something about existing variant calling approaches
 
-\subsection{Clustering the Genome}
-\label{section:clusteringTheGenome}
+% talk about how we want to do things differently:  do something simple/naive on the easy regions; do more on the harder regions
+
+% talk about how we'll use clusters as a signal for where the harder regions are
+
+% might want to jointly consider clusters since reads may be aligned among different cluster members
+
+% might want to use this with all-matcher -- let reads align to multiple places, then jointly consider those regions to figure out where the reads probably came from
 
 \section{Research Timeline}
 
@@ -193,7 +205,7 @@ With both the best-match and all-match versions of SNAP, we have spent some time
 
 \begin{small}
 \bibliographystyle{abbrv}
-\bibliography{/Users/kcurtis/Desktop/Readings.bib} % name of your .bib file
+\bibliography{Readings.bib} % name of your .bib file
 \end{small}
 
 \end{document}
