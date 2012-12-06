@@ -17,9 +17,26 @@
 
 \abstract
 
+As DNA short read sequencing has emerged as an extremely affordable process, efficient and accurate processing of short read data has become the main prerequisite to the use of whole-genome information in a clinical setting.  In this work, we discuss our efforts to improve on the efficiency of current tools, without sacrificing accuracy.  We have mainly focused on identifying and exploiting the similar regions in the human genome, since we have determined that the similar regions serve as the main difficulty in processing short read data.  We have some initial work improving alignment through the use of similar regions, and we discuss our plans to address the rest of the pipeline as well.
+
 \section{Introduction} 
 
+% short read sequencing is becoming cheap; that's exciting because we might be able to use it to study genetic causes of diseases (esp. cancer)
+Over the past decade since the Human Genome Project was completed, the cost of sequencing a DNA sample has dramatically declined.  This has been accompanied by an increased interest in studying the molecular causes of diseases, particularly cancer.  In particular, in the case of cancer, the hope is that by identifying genetic drivers of the disease, targeted drugs will be developed to attack these causes rather than indiscriminately attacking many of a patient's healthy cells as well, as is the case with standard chemotherapy.  Many medical practitioners dream of employing whole-genome sequencing as a standard part of caring for cancer patients.
+
+% the data processing is a nontrivial part of the expense, and it'll take over soon since the price of the wetlab portion is falling so steeply
+In order for this to become practical, it is necessary for the entire process of sequencing and analyzing a patient's DNA to be cost-effective; the number that is often quoted as the cost target is \$1000.  Currently, the total cost for this process is about \$5000, with \$4000 for the sequencing and \$1000 for the bioinformatics\footnote{These figures are based on a quote received from BGI in early 2012}.  Due to a high degree of parallelism employed by short-read sequencers, the wetlab cost of sequencing a sample is plummeting much faster than Moore's Law.  However, the cost of informatics will decline only as fast as Moore's Law, unless new algorithms are developed.  Therefore, the cost of processing the short read data will soon dominate the cost of sequencing it.
+
+% therefore, we need to work on the processing to make it faster & without trading off accuracy
+Therefore, this data processing cost will soon present a major obstacle to clinical adoption of whole-genome sequencing.  In order to realize the dream of including specific information about the genetics of a patient's disease in their course of treatment, we must improve the efficiency of short read processing.  However, we must not trade off accuracy in the process, as accuracy is also an important precondition to the usefulness of this information.
+
+In this work, we discuss our efforts to improve the efficiency, without losing accuracy, of the pipeline to process short read data.  Our efforts have mostly focused on short read \textit{alignment}, which is the first step of the pipeline.  This is a good target for improvement, since it is a very expensive portion of the pipeline.  In addition, since it is the first step of the pipeline, any mistakes incurred at this step will propagate throughout subsequent analysis.  
+
+Through the creation of a new short read alignment algorithm, called SNAP, we have identified that the structure, and specifically the repeat content, of the human reference genome is the main complicating factor in DNA short read analysis.  We will discuss our efforts to identify the DNA repeat content in the human genome in a manner that is driven by the characteristics of the short reads themselves.  We will then present some initial work, as well as vision for further improvement, that exploits the similarity of the genome to improve the efficiency of short read processing.
+
 \section{Background}
+
+In what follows, we provide a review of the literature related to short read alignment, identifying repeat content in the genome, and short read alignment strategies informed by the genome's structure.
 
 \subsection{Improving Alignment with SNAP}
 \label{section:SNAP}
@@ -63,8 +80,14 @@ This process is similarly carried out at all locations in the genome.  The outpu
 \subsection{Alignment to Similar Regions}
 % based on review paper
 
+An excellent review of how existing short read aligners handle reads that align to many locations is provided in \cite{Treangen:2012}.  It has been established that due to the presence of repetitive DNA, the short read alignment problem is more difficult.  One strategy is to ignore the read, although this can result in a lack of coverage of aligned reads at similar regions in the genome.  Some aligners place the read at its best match, although this can be error-prone.  Some aligners instead choose to report several of the top alignment locations; in the extreme, this strategy can be extended to reporting all alignment locations for a read.  Currently, short read aligners do not identify similar regions in advance and then leverage this information during alignment of potentially ambiguous reads.
+
 \subsection{Clustering the Genome}
 \label{section:clusteringTheGenome}
+
+Several algorithms for identifying repeat regions in DNA have been proposed; \eg the Repeat Pattern Toolkit (RPT) \cite{Agarwal:1994}, RepeatFinder \cite{Volfovsky:2001}, RepeatScout \cite{Price:2005}, RECON \cite{Bao:2002}.  In addition, a database called RepBase that contains repeats identified by individual researchers has been compiled \cite{Jurka:2005}.
+
+These repeat identification algorithms all tend to be focused on discovering the repeat structure of a new genome, in hopes of gaining a biological understanding of the origin and function of these repeats.  They tend to be focused on interpretability and therefore favor coalescing repeats into relatively fewer families, since this results in less information to consider.  In addition, they have a very high degree of generality as a goal; that is, they refrain from posing constraints on characteristics such as the size of the repeats.  Instead, they wish to discover repeats of any size, with a high degree of dissimilarity from each other, and even allowing strings of different sizes to be clustered together.  The open-ended nature of the problem that these algorithms are posed to address results in very complicated and computationally expensive algorithms.  While the output may be more suitable for interpretation, it is less usable by algorithms focused on short-read processing.  To our knowledge, there has not been work focusing on finding repeats at the scale of short reads.
 
 \section{The Similarity Problem}
 \label{section:similarityProblem}
@@ -240,6 +263,10 @@ During the fall, I will work on the rest of the pipeline, \ie variant calling.  
 I plan to complete my graduate studies this semester.  I will work on writing up a paper about our variant calling efforts.  I will also write and file my dissertation.
 
 \section{Conclusion}
+
+In order to fully realize the potential of whole-genome sequencing to help with diagnosis and treatment of molecularly-driven diseases, especially cancer, we have demonstrated that it is essential to provide short read analysis tools that are more efficient than the status quo.  In this work, we have presented some steps in that direction.  Through our experience developing the SNAP alignment algorithm, we have identified that the similar regions in the human genome present the main obstacle to efficient and accurate short read analysis.  We have motivated that identifying similar regions in the genome should be driven by the short reads themselves, rather than attempted at a very general and unconstrained level.  This provides a more constrained setting for similar region identification, leading to output that is more usable by short read processing algorithms.  
+
+We have taken some initial steps to leveraging the similar regions we have identified to improve alignment, in both the best-match and all-match setting.  We have also discussed our plans for extending this work, both via optimizing the existing best-match and all-match algorithms to improve their efficiency, and also by leveraging similarity in later stages of the pipeline.  We believe that similarity will play a major role in variant calling as well as in alignment, and that by exploiting the similarity of the genome, that we can produce improved variant calling tools that will help clinical sequencing to become practical.
 
 \begin{small}
 \bibliographystyle{abbrv}
